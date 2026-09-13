@@ -1,0 +1,26 @@
+namespace: agentmesh
+images:
+  gateway: agentmesh/gateway:local
+  worker: agentmesh/worker:local
+  frontend: agentmesh/frontend:local
+replicaCount: { gateway: 2, worker: 1, frontend: 2 }
+service:
+  gatewayPort: 8080
+  workerPort: 9000
+  frontendPort: 80
+ingress:
+  enabled: true
+  className: nginx
+  host: agentmesh.local
+config:
+  llmProvider: mock
+  temporalTaskQueue: agentmesh-runs
+  kafkaTopic: agentmesh.run-events
+secrets:
+  databaseUrl: ""
+  redisUrl: ""
+  temporalAddress: ""
+  kafkaBrokers: ""
+  authJwtSecret: ""
+  openaiApiKey: ""
+  anthropicApiKey: ""

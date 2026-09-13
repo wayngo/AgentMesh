@@ -1,0 +1,38 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: agentmesh
+  namespace: argocd
+spec:
+  sourceRepos:
+    - "https://github.com/REPLACE_WITH_YOUR_ORG/agentmesh.git"
+  destinations:
+    - namespace: agentmesh
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    - group: "*"
+      kind: "*"
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: agentmesh
+  namespace: argocd
+spec:
+  project: agentmesh
+  source:
+    repoURL: https://github.com/REPLACE_WITH_YOUR_ORG/agentmesh.git
+    targetRevision: main
+    path: deploy/helm/agentmesh
+    helm:
+      valueFiles:
+        - values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: agentmesh
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

@@ -1,0 +1,7 @@
+FROM python:3.13-slim
+WORKDIR /app
+COPY services/worker/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+COPY services/worker ./services/worker
+EXPOSE 9000
+CMD ["python", "services/worker/app.py"]

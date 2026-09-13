@@ -1,0 +1,4 @@
+# Copy to terraform.tfvars and customize before planning. Never commit real credentials.
+aws_region = "us-west-2"
+project_name = "agentmesh"
+environment = "dev"

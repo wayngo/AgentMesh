@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agentmesh-config
+data:
+  AGENTMESH_WORKER_ADDR: worker:9000
+  AGENTMESH_LLM_PROVIDER: mock
+  TEMPORAL_TASK_QUEUE: agentmesh-runs
+  KAFKA_TOPIC: agentmesh.run-events

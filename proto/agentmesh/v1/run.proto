@@ -1,0 +1,6 @@
+syntax = "proto3";
+package agentmesh.run.v1;
+message ExecuteRunRequest { string run_id = 1; string agent_id = 2; string input = 3; }
+message ExecuteRunResponse { string run_id = 1; string status = 2; string result = 3; }
+service RunWorker { rpc ExecuteRun(ExecuteRunRequest) returns (ExecuteRunResponse); }
+

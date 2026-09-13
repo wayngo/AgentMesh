@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  labels: { app: agentmesh-worker }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: agentmesh-worker } }
+  template:
+    metadata: { labels: { app: agentmesh-worker } }
+    spec:
+      containers:
+        - name: worker
+          image: agentmesh/worker:local
+          imagePullPolicy: IfNotPresent
+          ports: [{ name: grpc, containerPort: 9000 }]
+          envFrom: [{ configMapRef: { name: agentmesh-config } }, { secretRef: { name: agentmesh-secrets, optional: true } }]
+          readinessProbe: { tcpSocket: { port: grpc }, initialDelaySeconds: 3, periodSeconds: 10 }
+          livenessProbe: { tcpSocket: { port: grpc }, initialDelaySeconds: 10, periodSeconds: 20 }
+          resources: { requests: { cpu: 50m, memory: 128Mi }, limits: { cpu: 500m, memory: 512Mi } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: worker }
+spec:
+  selector: { app: agentmesh-worker }
+  ports: [{ name: grpc, port: 9000, targetPort: grpc }]

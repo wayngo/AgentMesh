@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>AgentMesh</title></head>
+<body>
+  <main class="shell">
+    <header><p class="eyebrow">AGENTMESH</p><h1>Run an agent</h1><p class="lede">Submit a prompt and follow its execution through the gateway.</p></header>
+    <form id="run-form" class="card">
+      <label for="agent-id">Agent ID</label><input id="agent-id" name="agent-id" value="demo" required>
+      <label for="input">Input</label><textarea id="input" name="input" rows="6" placeholder="What should the agent do?" required></textarea>
+      <button id="submit" type="submit">Start run</button>
+    </form>
+    <section class="card output" aria-live="polite"><div id="status" class="status">Ready</div><pre id="result"></pre></section>
+  </main>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

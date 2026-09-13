@@ -1,0 +1,13 @@
+# syntax=docker/dockerfile:1
+FROM golang:1.23 AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/agentmesh-gateway ./services/gateway
+FROM alpine:3.21
+COPY --from=build /out/agentmesh-gateway /agentmesh-gateway
+EXPOSE 8080
+RUN adduser -D -H agentmesh
+USER agentmesh
+ENTRYPOINT ["/agentmesh-gateway"]

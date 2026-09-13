@@ -1,0 +1,114 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "agentmesh.name" . }}-config
+  labels:
+    app.kubernetes.io/name: {{ include "agentmesh.name" . }}
+data:
+  AGENTMESH_WORKER_ADDR: {{ printf "%s-worker:%v" (include "agentmesh.name" .) .Values.service.workerPort | quote }}
+  AGENTMESH_LLM_PROVIDER: {{ .Values.config.llmProvider | quote }}
+  TEMPORAL_TASK_QUEUE: {{ .Values.config.temporalTaskQueue | quote }}
+  KAFKA_TOPIC: {{ .Values.config.kafkaTopic | quote }}
+---
+apiVersion: v1
+kind: Secret
+metadata: { name: {{ include "agentmesh.name" . }}-secrets }
+type: Opaque
+stringData:
+  DATABASE_URL: {{ .Values.secrets.databaseUrl | quote }}
+  REDIS_URL: {{ .Values.secrets.redisUrl | quote }}
+  TEMPORAL_ADDRESS: {{ .Values.secrets.temporalAddress | quote }}
+  KAFKA_BROKERS: {{ .Values.secrets.kafkaBrokers | quote }}
+  AUTH_JWT_SECRET: {{ .Values.secrets.authJwtSecret | quote }}
+  OPENAI_API_KEY: {{ .Values.secrets.openaiApiKey | quote }}
+  ANTHROPIC_API_KEY: {{ .Values.secrets.anthropicApiKey | quote }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: {{ include "agentmesh.name" . }}-worker, labels: { app: agentmesh-worker } }
+spec:
+  replicas: {{ .Values.replicaCount.worker }}
+  selector: { matchLabels: { app: agentmesh-worker } }
+  template:
+    metadata: { labels: { app: agentmesh-worker } }
+    spec:
+      containers:
+      - name: worker
+        image: {{ .Values.images.worker | quote }}
+        ports: [{ name: grpc, containerPort: 9000 }]
+        envFrom: [{ configMapRef: { name: {{ include "agentmesh.name" . }}-config } }, { secretRef: { name: {{ include "agentmesh.name" . }}-secrets } }]
+        readinessProbe: { tcpSocket: { port: grpc }, initialDelaySeconds: 3, periodSeconds: 10 }
+        livenessProbe: { tcpSocket: { port: grpc }, initialDelaySeconds: 10, periodSeconds: 20 }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: {{ include "agentmesh.name" . }}-worker }
+spec:
+  selector: { app: agentmesh-worker }
+  ports: [{ name: grpc, port: 9000, targetPort: grpc }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: {{ include "agentmesh.name" . }}-gateway, labels: { app: agentmesh-gateway } }
+spec:
+  replicas: {{ .Values.replicaCount.gateway }}
+  selector: { matchLabels: { app: agentmesh-gateway } }
+  template:
+    metadata: { labels: { app: agentmesh-gateway } }
+    spec:
+      containers:
+      - name: gateway
+        image: {{ .Values.images.gateway | quote }}
+        ports: [{ name: http, containerPort: 8080 }]
+        envFrom: [{ configMapRef: { name: {{ include "agentmesh.name" . }}-config } }, { secretRef: { name: {{ include "agentmesh.name" . }}-secrets } }]
+        readinessProbe: { httpGet: { path: /healthz, port: http }, initialDelaySeconds: 3, periodSeconds: 10 }
+        livenessProbe: { httpGet: { path: /healthz, port: http }, initialDelaySeconds: 10, periodSeconds: 20 }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: {{ include "agentmesh.name" . }}-gateway }
+spec:
+  selector: { app: agentmesh-gateway }
+  ports: [{ name: http, port: 8080, targetPort: http }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: {{ include "agentmesh.name" . }}-frontend, labels: { app: agentmesh-frontend } }
+spec:
+  replicas: {{ .Values.replicaCount.frontend }}
+  selector: { matchLabels: { app: agentmesh-frontend } }
+  template:
+    metadata: { labels: { app: agentmesh-frontend } }
+    spec:
+      containers:
+      - name: frontend
+        image: {{ .Values.images.frontend | quote }}
+        ports: [{ name: http, containerPort: 80 }]
+        readinessProbe: { httpGet: { path: /, port: http }, initialDelaySeconds: 3, periodSeconds: 10 }
+        livenessProbe: { httpGet: { path: /, port: http }, initialDelaySeconds: 10, periodSeconds: 20 }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: {{ include "agentmesh.name" . }}-frontend }
+spec:
+  selector: { app: agentmesh-frontend }
+  ports: [{ name: http, port: 80, targetPort: http }]
+{{- if .Values.ingress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "agentmesh.name" . }}
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  rules:
+  - host: {{ .Values.ingress.host }}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend: { service: { name: {{ include "agentmesh.name" . }}-frontend, port: { name: http } } }
+{{- end }}
