@@ -215,6 +215,10 @@ tests/                       Load and failure testing
 docs/                        Setup, verification, and architecture documentation
 ```
 
+## Architecture diagram
+
+See [docs/architecture-overview.md](docs/architecture-overview.md) for a simple visual request-flow diagram and an explanation of how the platform components work together.
+
 ## Documentation
 
 - [Setup and verification guide](docs/SETUP_AND_VERIFICATION.md)
