@@ -1,23 +1,56 @@
 # AgentMesh
 
-AgentMesh is a distributed AI-agent execution platform. This repository is being built in incremental phases. The current implementation includes the Go gateway, Python worker, frontend, persistence, orchestration, events, security, observability, and deployment layers through Phase 16.
+AgentMesh is a distributed AI-agent execution platform designed to run reliable, observable, and scalable agent workloads. It separates API ingress, workflow orchestration, model execution, persistence, event distribution, and edge delivery so each layer can scale and evolve independently.
 
-## Current capabilities
+## Platform capabilities
 
-- REST API: create and retrieve runs with `POST /v1/runs` and `GET /v1/runs/{id}`.
-- gRPC: gateway-to-worker execution using the versioned contract in `proto/agentmesh/v1/run.proto`.
-- Persistence: in-memory default or PostgreSQL through `DATABASE_URL`.
-- Temporal: durable asynchronous workflows through `TEMPORAL_ADDRESS`.
-- LLM providers: mock, OpenAI, and Anthropic through `AGENTMESH_LLM_PROVIDER`.
-- Real-time updates: WebSocket endpoint `/v1/runs/{id}/events` with frontend polling fallback.
-- Redis: optional write-through run cache through `REDIS_URL`.
-- Kafka: optional versioned `run.updated` events through `KAFKA_BROKERS`.
-- Security: optional HS256 JWT authentication through `AUTH_JWT_SECRET`.
-- Observability: OpenTelemetry HTTP instrumentation, structured logs, and `/debug/metrics`.
-- Deployment: Docker Compose, Kubernetes/Kustomize, and Helm.
-- AWS foundation: Terraform-managed VPC, EKS, PostgreSQL, Redis, and Kafka.
-- GitOps and edge routing: Argo CD application definitions and Envoy WebSocket-aware routing.
-- Validation: k6 load tests, API failure checks, and production-readiness checklist.
+| Technology | Role in AgentMesh |
+|---|---|
+| Go | High-performance gateway and API lifecycle management. |
+| Python / FastAPI | Worker runtime for model execution and provider integration. |
+| gRPC / Protocol Buffers | Strongly typed, efficient gateway-to-worker communication through a versioned service contract. |
+| Temporal | Durable workflow orchestration, retries, asynchronous execution, and recovery from process or infrastructure failures. |
+| PostgreSQL | Durable system-of-record for agent runs, statuses, results, and lifecycle state. |
+| Redis | Low-latency write-through caching for frequently accessed run state. |
+| Apache Kafka | Versioned event distribution for run-state changes and downstream consumers. |
+| OpenTelemetry | Distributed HTTP instrumentation and trace/span propagation for observability. |
+| Structured logging / metrics | Machine-readable request logs plus request, error, and latency metrics at `/debug/metrics`. |
+| WebSockets | Real-time run-status updates to connected clients. |
+| Vite / TypeScript | Typed frontend build pipeline and browser client for submitting and monitoring runs. |
+| Docker / Docker Compose | Reproducible local builds and multi-service development environments. |
+| Kubernetes | Container scheduling, service discovery, health probes, rolling deployments, and horizontal scaling. |
+| Helm | Parameterized Kubernetes packaging for repeatable environment deployments. |
+| AWS | Cloud infrastructure target for production workloads. |
+| Terraform | Infrastructure as code for repeatable AWS provisioning and reviewable plans. |
+| Amazon EKS | Managed Kubernetes control plane and workload platform. |
+| Amazon RDS PostgreSQL | Managed relational persistence for production run state. |
+| Amazon ElastiCache Redis | Managed cache layer for low-latency state access. |
+| Amazon MSK Kafka | Managed event streaming for run lifecycle events. |
+| GitOps / Argo CD | Automated Kubernetes synchronization, drift correction, pruning, and self-healing from Git. |
+| Envoy | Edge routing and WebSocket-aware traffic handling in front of the application. |
+| k6 | Load testing for run throughput, latency, and error-rate regression detection. |
+
+## Architecture
+
+```text
+Client / Browser
+      |
+      v
+Envoy or Ingress
+      |
+      v
+Frontend (Vite / TypeScript / Nginx)
+      |
+      +--> Go Gateway (REST, JWT, WebSockets, OpenTelemetry)
+                  |
+                  +--> Temporal workflows and activities
+                  +--> PostgreSQL / Redis / Kafka
+                  +--> Python Worker over gRPC
+                              |
+                              +--> Mock, OpenAI, or Anthropic provider
+```
+
+The gateway accepts run requests and stores lifecycle state. When Temporal is configured, it starts a durable workflow and returns a queued response; the workflow invokes the worker activity with retry policy and persists the final result. Without Temporal, the gateway can execute directly through gRPC for lightweight local development.
 
 ## Local development
 
@@ -42,11 +75,20 @@ corepack npm install
 corepack npm run dev
 ```
 
-Open the UI at [http://localhost:5173](http://localhost:5173). The gateway defaults to `localhost:8080` and the worker to `localhost:9000`.
+Open the UI at [http://localhost:5173](http://localhost:5173). The gateway defaults to `http://localhost:8080` and the worker gRPC service to `localhost:9000`.
+
+Direct API checks:
+
+```powershell
+Invoke-RestMethod http://localhost:8080/healthz
+$body = '{"agent_id":"demo","input":"hello"}'
+Invoke-RestMethod -Method Post http://localhost:8080/v1/runs -ContentType 'application/json' -Body $body
+Invoke-RestMethod http://localhost:8080/debug/metrics
+```
 
 ## Configuration
 
-Copy `.env.example` to `.env` and set only the services you are using. Keep real credentials out of Git:
+Copy `.env.example` to `.env` and set only the integrations you are using:
 
 ```text
 DATABASE_URL=postgres://...
@@ -59,84 +101,126 @@ OPENAI_API_KEY=...
 ANTHROPIC_API_KEY=...
 ```
 
-## Testing everything
+Use `AGENTMESH_LLM_PROVIDER=mock` for local testing. OpenAI and Anthropic providers require their corresponding API keys and model settings.
 
-Run Go tests:
+## Security
+
+Never commit `.env` files, API keys, database credentials, JWT secrets, Terraform state, AWS/cloud credentials, kubeconfig files, or private certificates. Commit `.env.example` only. Always inspect `git status` and `git diff --cached` before pushing. If a secret is exposed, revoke or rotate it immediately; deleting it later does not remove it from Git history.
+
+## Testing and verification
+
+Run the Go test suite:
 
 ```powershell
 go test ./...
 ```
 
-Run worker/provider tests:
+Run worker and provider tests:
 
 ```powershell
 python -m pytest services/worker/tests
 ```
 
-Run frontend type-check/build tests:
+Run frontend checks:
 
 ```powershell
 cd frontend
 corepack npm test
 corepack npm run build
+cd ..
 ```
 
-Validate the Docker Compose model:
+Run API failure checks:
+
+```powershell
+.\tests\failure\verify-failures.ps1 -BaseUrl http://localhost:8080
+```
+
+Run load tests with k6:
+
+```powershell
+k6 run tests/k6/runs.js
+$env:BASE_URL="http://localhost:8080"
+$env:VUS="10"
+$env:DURATION="2m"
+k6 run tests/k6/runs.js
+```
+
+See [docs/SETUP_AND_VERIFICATION.md](docs/SETUP_AND_VERIFICATION.md) for the complete local, Docker, Kubernetes, Helm, AWS, Argo CD, Envoy, failure-testing, and load-testing procedures.
+
+## Container deployment
+
+Validate and run the local Docker stack:
 
 ```powershell
 docker compose -f deploy/docker/docker-compose.yml config
-```
-
-Build and run the local containers:
-
-```powershell
 docker compose -f deploy/docker/docker-compose.yml up --build
 ```
 
-Validate Kubernetes/Kustomize when `kubectl` is available:
+The frontend is available at `http://localhost:3000` and the gateway at `http://localhost:8080`.
+
+## Kubernetes and GitOps
+
+Render and validate the Kubernetes manifests:
 
 ```powershell
 kubectl kustomize deploy/kubernetes
 kubectl apply --dry-run=client -k deploy/kubernetes
 ```
 
-Validate Terraform infrastructure configuration:
-
-```powershell
-cd infra/terraform
-terraform init
-terraform fmt -check
-terraform validate
-terraform plan
-```
-
-Validate and render Helm:
+Validate and render the Helm chart:
 
 ```powershell
 helm lint deploy/helm/agentmesh
 helm template agentmesh deploy/helm/agentmesh
 ```
 
-## Phase history
+Apply the Argo CD application after replacing the placeholder repository URL in `deploy/argocd/agentmesh-application.yaml`:
 
-- Phase 0 — repository scaffold and service seams.
-- Phase 1 — Go REST gateway to Python worker over gRPC.
-- Phase 2 — PostgreSQL run persistence and migrations.
-- Phase 3 — Temporal workflows, retries, and asynchronous execution.
-- Phase 4 — mock, OpenAI, and Anthropic provider adapters.
-- Phase 5 — Vite frontend with run submission, polling, results, and errors.
-- Phase 6 — WebSocket run-event streaming with polling fallback.
-- Phase 7 — Redis write-through run caching.
-- Phase 8 — Kafka run-event publishing.
-- Phase 9 — optional JWT authentication.
-- Phase 10 — OpenTelemetry instrumentation, logs, and metrics.
-- Phase 11 — Dockerfiles, Compose, and Nginx proxying.
-- Phase 12 — Kubernetes/Kustomize deployment manifests.
-- Phase 13 — Helm chart packaging.
-- Phase 14 — AWS infrastructure with Terraform.
-- Phase 15 — GitOps with Argo CD and edge routing with Envoy.
-- Phase 16 — k6 load testing, failure checks, and production hardening.
+```powershell
+kubectl apply -f deploy/argocd/agentmesh-application.yaml
+```
 
-All planned phases are complete. Use [docs/SETUP_AND_VERIFICATION.md](docs/SETUP_AND_VERIFICATION.md) to reproduce and verify the entire system on a Docker-capable laptop.
+## AWS infrastructure
 
-See [docs/SETUP_AND_VERIFICATION.md](docs/SETUP_AND_VERIFICATION.md), [docs/phase-plan.md](docs/phase-plan.md), and the deployment READMEs for details.
+Terraform configuration is in `infra/terraform`. Review the plan before creating billable resources:
+
+```powershell
+cd infra/terraform
+Copy-Item terraform.tfvars.example terraform.tfvars
+terraform init
+terraform fmt -check
+terraform validate
+terraform plan
+```
+
+Use an encrypted, access-controlled remote Terraform backend before shared or production use. See [infra/terraform/README.md](infra/terraform/README.md) for the full workflow.
+
+## Repository layout
+
+```text
+services/gateway/            Go REST gateway and infrastructure integrations
+services/worker/             Python worker and LLM provider adapters
+frontend/                    TypeScript/Vite browser client
+proto/                       Versioned Protocol Buffers contract
+db/migrations/               PostgreSQL schema migrations
+deploy/docker/               Dockerfiles, Compose, and Nginx proxy
+deploy/kubernetes/           Kubernetes/Kustomize resources
+deploy/helm/                 Helm chart
+deploy/argocd/               Argo CD GitOps resources
+deploy/envoy/                Envoy edge configuration
+infra/terraform/             AWS infrastructure as code
+observability/               Observability documentation and configuration
+tests/                       Load and failure testing
+docs/                        Setup, verification, and architecture documentation
+```
+
+## Documentation
+
+- [Setup and verification guide](docs/SETUP_AND_VERIFICATION.md)
+- [Docker deployment](deploy/docker/README.md)
+- [Kubernetes deployment](deploy/kubernetes/README.md)
+- [Helm deployment](deploy/helm/README.md)
+- [Terraform AWS infrastructure](infra/terraform/README.md)
+- [Argo CD GitOps](deploy/argocd/README.md)
+- [Envoy edge routing](deploy/envoy/README.md)

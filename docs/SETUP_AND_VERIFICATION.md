@@ -87,6 +87,10 @@ Invoke-RestMethod -Method Post http://localhost:8080/v1/runs -ContentType 'appli
 Invoke-RestMethod http://localhost:8080/debug/metrics
 ```
 
+## Security before Git commits
+
+Never commit `.env` files, API keys, Terraform state, AWS/cloud credentials, kubeconfig files, or private certificates. Commit `.env.example` only. Run `git status` and inspect `git diff --cached` before pushing. If a secret is exposed, revoke or rotate it immediately; deleting it later does not remove it from Git history.
+
 ## 4. Optional service configuration
 
 Copy `.env.example` to `.env` and set only the integrations that exist on the laptop. Do not commit `.env` or real credentials.
